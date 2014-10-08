@@ -1,0 +1,40 @@
+#!/bin/bash
+TAB=$(printf "\t")
+FINDOPTIONS="-type f -print0"
+XARGSOPTIONS="--null --max-args=50 --max-procs=4"
+AWKSTATS='
+BEGIN { FS=OFS="\t" }
+{
+    sum[$2]+=$3;
+    count[$2]+=1;
+    if(!($2 in max) || $3 > max[$2]) max[$2] = $3;
+    if(!($2 in min) || $3 < min[$2]) min[$2] = $3;
+}
+END { for(i in sum) { print i,sum[i],count[i],min[i],max[i]; } }
+'
+
+directory="$1"
+[ -d "$directory" ] || exit 1
+
+mimetypes=$(mktemp)
+filesizes=$(mktemp)
+
+# Get mime types of files
+find "$directory" $FINDOPTIONS \
+    | xargs $XARGSOPTIONS mimetype --separator="$TAB" --noalign -- \
+    | sort --key=1 --field-separator="$TAB" \
+    > "$mimetypes"
+
+# Get file sizes
+find "$directory" $FINDOPTIONS \
+    | xargs $XARGSOPTIONS du --apparent-size --block-size=1 -- \
+    | sort --key=2 --field-separator="$TAB" \
+    > "$filesizes"
+
+# Join the two lists and calculate statistics
+join -t "$TAB" -1 1 -2 2 "$mimetypes" "$filesizes" \
+    | awk "$AWKSTATS" \
+    | cut -b 2- \
+    | sort
+
+rm -- "$mimetypes" "$filesizes"
